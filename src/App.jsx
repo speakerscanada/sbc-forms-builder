@@ -1,9 +1,32 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { SurveyCreatorComponent, SurveyCreator } from "survey-creator-react";
+// Dynamic import cache for survey-creator-react (avoids Vite CJS interop null issue)
+let _surveyCreatorLibCache = null;
+async function getSurveyCreatorLibAsync() {
+  if (_surveyCreatorLibCache && _surveyCreatorLibCache.SurveyCreator) return _surveyCreatorLibCache;
+  const mod = await import("survey-creator-react");
+  // Vite production build exports CJS module as mod.s (minified)
+  // Dev build may use mod.default
+  // Try all possible locations
+  let lib = null;
+  if (mod && mod.default && mod.default.SurveyCreator) {
+    lib = mod.default;
+  } else {
+    // Find the key that has SurveyCreator on it
+    for (const key of Object.keys(mod || {})) {
+      const val = mod[key];
+      if (val && typeof val === 'object' && val.SurveyCreator) {
+        lib = val;
+        break;
+      }
+    }
+  }
+  if (!lib) lib = mod; // fallback
+  console.log('[SBC] getSurveyCreatorLibAsync resolved, lib.SurveyCreator:', typeof (lib && lib.SurveyCreator));
+  _surveyCreatorLibCache = lib;
+  return lib;
+}
 import "survey-creator-core/survey-creator-core.min.css";
 import "survey-core/defaultV2.min.css";
-import "react-quill/dist/quill.snow.css";
-import ReactQuill from "react-quill";
 
 const CORRECT_PASSWORD = "780WestCalgaryMa!!";
 
@@ -98,32 +121,21 @@ const SBC_FORMS = [
             { type: "radiogroup", name: "bilingual_requirement", title: "Is there any bilingual requirement?", isRequired: true, choices: ["Yes", "No", "Unsure"] },
             { type: "comment", name: "bilingual_description", title: "Please describe bilingual requirements", isRequired: true },
             { type: "radiogroup", name: "slide_deck_required", title: "Do you require the speaker's slide deck before the session?", isRequired: true, choices: ["Yes", "No", "Unsure"] },
-            { type: "text", name: "slide_deck_deadline", title: "Slide deck received from speaker deadline", inputType: "date" },
-            { type: "comment", name: "slide_deck_use", title: "Explain the intended use of the slide deck" },
           ],
         },
         {
           name: "page3",
-          title: "Virtual Platform Details",
+          title: "Virtual Event Details",
           elements: [
-            { type: "dropdown", name: "platform", title: "Virtual Platform", choices: ["Zoom", "Microsoft Teams", "Google Meet", "Webex", "Hopin", "StreamYard", "Other"] },
-            { type: "text", name: "meeting_link", title: "Meeting Link / URL", isRequired: true },
+            { type: "text", name: "event_name", title: "Event Name", isRequired: true },
+            { type: "text", name: "event_date", title: "Event Date", inputType: "date", isRequired: true },
+            { type: "text", name: "session_start_time", title: "Session Start Time", inputType: "time" },
+            { type: "text", name: "session_end_time", title: "Session End Time", inputType: "time" },
+            { type: "dropdown", name: "virtual_platform", title: "Virtual Platform", choices: ["Zoom", "Microsoft Teams", "Webex", "Google Meet", "Hopin", "Other"] },
+            { type: "text", name: "meeting_link", title: "Meeting Link / URL" },
             { type: "text", name: "meeting_id", title: "Meeting ID" },
             { type: "text", name: "meeting_password", title: "Meeting Password" },
-            { type: "text", name: "session_date", title: "Session Date", inputType: "date", isRequired: true },
-            { type: "text", name: "session_start_time", title: "Session Start Time", inputType: "time", isRequired: true },
-            { type: "dropdown", name: "time_zone", title: "Time Zone", choices: ["ET (Eastern)", "CT (Central)", "MT (Mountain)", "PT (Pacific)", "AT (Atlantic)", "Other"] },
-            { type: "comment", name: "platform_instructions", title: "Platform / Technical Instructions for Speaker" },
-          ],
-        },
-        {
-          name: "page4",
-          title: "Payment Information",
-          elements: [
-            { type: "text", name: "organization_legal_name", title: "Organization Legal Name", isRequired: true },
-            { type: "text", name: "billing_address", title: "Billing Address", isRequired: true },
-            { type: "dropdown", name: "payment_method", title: "Preferred Payment Method", choices: ["EFT / Wire Transfer", "Cheque", "Credit Card", "Other"] },
-            { type: "text", name: "po_number", title: "PO Number (if applicable)" },
+            { type: "text", name: "expected_attendees", title: "Expected Number of Attendees" },
           ],
         },
       ],
@@ -138,34 +150,24 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Event Information",
+          title: "Event Overview",
           elements: [
-            { type: "text", name: "host_organization", title: "Host Organization Name" },
-            { type: "text", name: "event_website", title: "Event Website / Landing Page" },
-            { type: "text", name: "speaker_name", title: "Speaker Name" },
-            { type: "text", name: "title_of_event", title: "Title of Event" },
-            { type: "text", name: "theme_of_event", title: "Theme of Event" },
-            { type: "text", name: "event_city", title: "Event City" },
-            { type: "text", name: "event_province", title: "Event Province / State" },
-            { type: "text", name: "event_country", title: "Event Country" },
-            { type: "radiogroup", name: "date_status", title: "Event Date(s)", isRequired: true, choices: ["Confirmed Date", "Multiple Days / Events", "Date To Be Confirmed"] },
-            { type: "text", name: "event_date_1", title: "Event Date 1", inputType: "date" },
-            { type: "comment", name: "event_date_notes", title: "Date Notes" },
+            { type: "text", name: "event_name", title: "Event Name", isRequired: true },
+            { type: "text", name: "event_date", title: "Event Date", inputType: "date", isRequired: true },
+            { type: "text", name: "speaker_name", title: "Speaker Name", isRequired: true },
+            { type: "text", name: "topic", title: "Topic / Presentation Title", isRequired: true },
+            { type: "dropdown", name: "virtual_platform", title: "Virtual Platform", choices: ["Zoom", "Microsoft Teams", "Webex", "Google Meet", "Hopin", "Other"] },
+            { type: "text", name: "meeting_link", title: "Meeting Link" },
           ],
         },
         {
           name: "page2",
-          title: "Virtual Platform & Session Details",
+          title: "Schedule",
           elements: [
-            { type: "dropdown", name: "platform", title: "Virtual Platform", choices: ["Zoom", "Microsoft Teams", "Google Meet", "Webex", "Hopin", "StreamYard", "Other"] },
-            { type: "text", name: "meeting_link", title: "Meeting Link / URL", isRequired: true },
-            { type: "text", name: "meeting_id", title: "Meeting ID" },
-            { type: "text", name: "meeting_password", title: "Meeting Password" },
-            { type: "text", name: "session_start_time", title: "Session Start Time", inputType: "time" },
-            { type: "dropdown", name: "time_zone", title: "Time Zone", choices: ["ET (Eastern)", "CT (Central)", "MT (Mountain)", "PT (Pacific)", "AT (Atlantic)", "Other"] },
-            { type: "text", name: "speaker_arrival_time", title: "Speaker Virtual Arrival Time (green room)", inputType: "time" },
-            { type: "comment", name: "technical_instructions", title: "Technical Instructions for Speaker" },
-            { type: "comment", name: "additional_notes", title: "Additional Notes" },
+            { type: "text", name: "green_room_time", title: "Green Room / Tech Check Time", inputType: "time" },
+            { type: "text", name: "session_start", title: "Session Start Time", inputType: "time" },
+            { type: "text", name: "session_end", title: "Session End Time", inputType: "time" },
+            { type: "comment", name: "run_of_show", title: "Run of Show / Agenda Notes" },
           ],
         },
       ],
@@ -176,36 +178,30 @@ const SBC_FORMS = [
     label: "In-Person Itinerary",
     group: "Client / Event Forms",
     schema: {
-      title: "Speaker Itinerary — In-Person Event",
+      title: "In-Person Itinerary",
       pages: [
         {
           name: "page1",
-          title: "Event Information",
+          title: "Event Overview",
           elements: [
-            { type: "text", name: "host_organization", title: "Host Organization Name" },
-            { type: "text", name: "event_website", title: "Event Website / Landing Page" },
-            { type: "text", name: "speaker_name", title: "Speaker Name" },
-            { type: "text", name: "title_of_event", title: "Title of Event" },
-            { type: "text", name: "theme_of_event", title: "Theme of Event" },
+            { type: "text", name: "event_name", title: "Event Name", isRequired: true },
+            { type: "text", name: "event_date", title: "Event Date", inputType: "date", isRequired: true },
+            { type: "text", name: "speaker_name", title: "Speaker Name", isRequired: true },
+            { type: "text", name: "topic", title: "Topic / Presentation Title", isRequired: true },
             { type: "text", name: "venue_name", title: "Venue Name", isRequired: true },
-            { type: "text", name: "venue_address", title: "Venue Address", isRequired: true },
-            { type: "text", name: "event_city", title: "Event City" },
-            { type: "text", name: "event_province", title: "Event Province / State" },
-            { type: "text", name: "event_country", title: "Event Country" },
-            { type: "radiogroup", name: "date_status", title: "Event Date(s)", isRequired: true, choices: ["Confirmed Date", "Multiple Days / Events", "Date To Be Confirmed"] },
-            { type: "text", name: "event_date", title: "Event Date", inputType: "date" },
+            { type: "text", name: "venue_address", title: "Venue Address" },
+            { type: "text", name: "venue_city", title: "City" },
           ],
         },
         {
           name: "page2",
-          title: "Schedule & Logistics",
+          title: "Schedule",
           elements: [
-            { type: "text", name: "session_start_time", title: "Session Start Time", inputType: "time" },
-            { type: "text", name: "session_end_time", title: "Session End Time", inputType: "time" },
-            { type: "text", name: "speaker_arrival_time", title: "Requested Speaker Arrival Time", inputType: "time" },
-            { type: "comment", name: "parking_instructions", title: "Parking / Arrival Instructions" },
-            { type: "comment", name: "onsite_contact", title: "On-Site Contact Name & Phone" },
-            { type: "comment", name: "additional_notes", title: "Additional Notes for the Speaker" },
+            { type: "text", name: "arrival_time", title: "Speaker Arrival Time", inputType: "time" },
+            { type: "text", name: "soundcheck_time", title: "Sound Check / AV Check Time", inputType: "time" },
+            { type: "text", name: "session_start", title: "Session Start Time", inputType: "time" },
+            { type: "text", name: "session_end", title: "Session End Time", inputType: "time" },
+            { type: "comment", name: "run_of_show", title: "Run of Show / Agenda Notes" },
           ],
         },
       ],
@@ -220,43 +216,30 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Room & Stage Setup",
+          title: "AV & Technical Requirements",
           elements: [
-            { type: "dropdown", name: "stage_setup", title: "Stage Setup", choices: ["Theatre", "Classroom", "Boardroom", "Banquet", "U-Shape", "Other"] },
-            { type: "radiogroup", name: "raised_stage", title: "Raised stage required?", choices: ["Yes", "No", "Unsure"] },
-            { type: "comment", name: "room_layout", title: "Describe the required layout" },
-            { type: "text", name: "room_capacity", title: "Room Capacity" },
+            { type: "checkbox", name: "av_equipment", title: "AV Equipment Required", choices: ["Podium Microphone", "Lapel Microphone", "Handheld Microphone", "Projector", "Screen", "Clicker / Presenter Remote", "Confidence Monitor", "Livestream Setup", "Recording Equipment"] },
+            { type: "comment", name: "av_notes", title: "Additional AV Notes" },
           ],
         },
         {
           name: "page2",
-          title: "Audio / Visual",
+          title: "Room & Logistics",
           elements: [
-            { type: "radiogroup", name: "wireless_mic", title: "Wireless microphone required?", isRequired: true, choices: ["Yes", "No", "Unsure"] },
-            { type: "dropdown", name: "audience_mic", title: "Audience microphone needed?", choices: ["Yes - Handheld", "Yes - Roving", "No"] },
-            { type: "dropdown", name: "screen_size", title: "Screen Size", choices: ["Small (up to 8ft)", "Medium (8-12ft)", "Large (12ft+)", "LED Wall"] },
-            { type: "radiogroup", name: "speaker_brings_computer", title: "Speaker brings own computer?", choices: ["Yes", "No"] },
-            { type: "radiogroup", name: "hdmi_required", title: "HDMI cord required?", choices: ["Yes", "No"] },
-            { type: "radiogroup", name: "clicker_required", title: "Wireless remote clicker required?", choices: ["Yes", "No"] },
-            { type: "radiogroup", name: "wifi_required", title: "WiFi access required?", choices: ["Yes", "No"] },
-            { type: "comment", name: "av_notes", title: "Additional AV notes" },
-          ],
-        },
-        {
-          name: "page3",
-          title: "Other Requirements",
-          elements: [
-            { type: "text", name: "water_requirements", title: "Water / Beverage Requirements" },
-            { type: "comment", name: "audience_preparation", title: "How should the audience prepare?" },
-            { type: "radiogroup", name: "recording_permission", title: "Permission to record the session?", choices: ["Yes - Full", "Yes - Audio Only", "No", "Partial"] },
-            { type: "comment", name: "additional_requirements", title: "Any other on-site requirements" },
+            { type: "dropdown", name: "room_setup", title: "Room Setup Style", choices: ["Theatre", "Classroom", "Boardroom", "Banquet / Rounds", "U-Shape", "Other"] },
+            { type: "text", name: "room_capacity", title: "Room Capacity" },
+            { type: "radiogroup", name: "green_room_required", title: "Green Room Required?", choices: ["Yes", "No"] },
+            { type: "comment", name: "green_room_notes", title: "Green Room Notes" },
+            { type: "radiogroup", name: "parking_required", title: "Parking Required?", choices: ["Yes", "No"] },
+            { type: "comment", name: "parking_notes", title: "Parking Notes" },
+            { type: "comment", name: "additional_notes", title: "Additional On-Site Notes" },
           ],
         },
       ],
     },
   },
   {
-    key: "travel_agent",
+    key: "travel_agent_form",
     label: "Travel Agent Form",
     group: "Client / Event Forms",
     schema: {
@@ -264,50 +247,32 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Event & Speaker Details",
+          title: "Travel Agent Information",
           elements: [
-            { type: "text", name: "speaker_name", title: "Speaker Name", isRequired: true },
-            { type: "text", name: "event_name", title: "Event Name", isRequired: true },
-            { type: "text", name: "host_organization", title: "Host Organization", isRequired: true },
-            { type: "text", name: "event_city", title: "Event City", isRequired: true },
-            { type: "text", name: "event_date", title: "Event Date", inputType: "date", isRequired: true },
-            { type: "text", name: "event_start_time", title: "Event Start Time", inputType: "time" },
+            { type: "text", name: "agent_first_name", title: "Agent First Name", isRequired: true },
+            { type: "text", name: "agent_last_name", title: "Agent Last Name", isRequired: true },
+            { type: "text", name: "agency_name", title: "Agency Name", isRequired: true },
+            { type: "text", name: "agent_email", title: "Agent Email", inputType: "email", isRequired: true },
+            { type: "text", name: "agent_phone", title: "Agent Phone", isRequired: true },
           ],
         },
         {
           name: "page2",
-          title: "Travel Arrangements",
+          title: "Booking Details",
           elements: [
-            { type: "dropdown", name: "travel_type", title: "Travel Type", isRequired: true, choices: ["Flight", "Train", "Driving", "Virtual - No Travel"] },
-            { type: "text", name: "departure_city", title: "Departure City" },
-            { type: "text", name: "arrival_city", title: "Arrival City" },
-            { type: "text", name: "departure_date", title: "Departure Date", inputType: "date" },
-            { type: "text", name: "return_date", title: "Return Date", inputType: "date" },
-            { type: "dropdown", name: "seat_class", title: "Seat Class", choices: ["Economy", "Premium Economy", "Business", "First Class"] },
-            { type: "text", name: "frequent_flyer_number", title: "Frequent Flyer Number" },
-            { type: "text", name: "passport_name", title: "Name on Passport / ID" },
-            { type: "text", name: "date_of_birth", title: "Date of Birth", inputType: "date" },
-            { type: "text", name: "passport_number", title: "Passport Number" },
-            { type: "text", name: "passport_expiry", title: "Passport Expiry Date", inputType: "date" },
-          ],
-        },
-        {
-          name: "page3",
-          title: "Hotel & Ground Transport",
-          elements: [
+            { type: "text", name: "speaker_name", title: "Speaker Name", isRequired: true },
+            { type: "text", name: "event_date", title: "Event Date", inputType: "date", isRequired: true },
+            { type: "text", name: "event_city", title: "Event City", isRequired: true },
+            { type: "dropdown", name: "travel_class", title: "Travel Class", choices: ["Economy", "Premium Economy", "Business", "First Class"] },
             { type: "radiogroup", name: "hotel_required", title: "Hotel Required?", choices: ["Yes", "No"] },
-            { type: "text", name: "check_in_date", title: "Check-In Date", inputType: "date" },
-            { type: "text", name: "check_out_date", title: "Check-Out Date", inputType: "date" },
-            { type: "dropdown", name: "room_preference", title: "Room Preference", choices: ["Single King", "Single Queen", "Double Queen", "Suite"] },
-            { type: "dropdown", name: "ground_transport", title: "Ground Transportation", choices: ["Uber / Taxi", "Personal Escort", "Black Limo", "Car Rental", "None"] },
-            { type: "comment", name: "transport_notes", title: "Transportation Notes" },
-            { type: "comment", name: "special_requests", title: "Special Requests / Dietary / Accessibility Needs" },
+            { type: "text", name: "hotel_check_in", title: "Hotel Check-In Date", inputType: "date" },
+            { type: "text", name: "hotel_check_out", title: "Hotel Check-Out Date", inputType: "date" },
+            { type: "comment", name: "travel_notes", title: "Special Travel Notes or Requirements" },
           ],
         },
       ],
     },
   },
-
   // ── SPEAKER PORTAL FORMS ──
   {
     key: "speaker_travel_preferences",
@@ -318,28 +283,34 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Personal Travel Details",
+          title: "Flight Preferences",
           elements: [
-            { type: "text", name: "legal_name", title: "Legal Name (as on ID/Passport)", isRequired: true },
-            { type: "text", name: "date_of_birth", title: "Date of Birth", inputType: "date" },
-            { type: "text", name: "passport_number", title: "Passport Number" },
-            { type: "text", name: "passport_expiry", title: "Passport Expiry Date", inputType: "date" },
-            { type: "text", name: "nationality", title: "Nationality" },
-            { type: "text", name: "frequent_flyer_airline", title: "Preferred Airline" },
-            { type: "text", name: "frequent_flyer_number", title: "Frequent Flyer Number" },
+            { type: "text", name: "home_airport", title: "Home Airport (City / Code)", isRequired: true },
+            { type: "dropdown", name: "preferred_airline", title: "Preferred Airline", choices: ["Air Canada", "WestJet", "Porter Airlines", "United Airlines", "Delta", "American Airlines", "No Preference", "Other"] },
+            { type: "text", name: "frequent_flyer", title: "Frequent Flyer Number(s)" },
+            { type: "dropdown", name: "seat_preference", title: "Seat Preference", choices: ["Aisle", "Window", "No Preference"] },
+            { type: "dropdown", name: "travel_class", title: "Travel Class", choices: ["Economy", "Premium Economy", "Business", "First Class"] },
           ],
         },
         {
           name: "page2",
-          title: "Seat & Class Preferences",
+          title: "Hotel Preferences",
           elements: [
-            { type: "dropdown", name: "seat_class", title: "Preferred Seat Class", choices: ["Economy", "Premium Economy", "Business", "First Class"] },
-            { type: "dropdown", name: "seat_position", title: "Preferred Seat Position", choices: ["Window", "Aisle", "No Preference"] },
-            { type: "radiogroup", name: "hotel_required", title: "Hotel Required for Events?", choices: ["Yes", "No", "Depends on distance"] },
-            { type: "dropdown", name: "room_preference", title: "Room Preference", choices: ["Single King", "Single Queen", "Double Queen", "Suite"] },
-            { type: "comment", name: "dietary_requirements", title: "Dietary Requirements / Allergies" },
-            { type: "comment", name: "accessibility_needs", title: "Accessibility Needs" },
-            { type: "comment", name: "additional_travel_notes", title: "Additional Travel Notes or Preferences" },
+            { type: "dropdown", name: "hotel_chain", title: "Preferred Hotel Chain", choices: ["Marriott", "Hilton", "Hyatt", "IHG", "Best Western", "No Preference", "Other"] },
+            { type: "text", name: "hotel_loyalty", title: "Hotel Loyalty Number(s)" },
+            { type: "dropdown", name: "room_type", title: "Room Type Preference", choices: ["King", "Queen", "Double", "No Preference"] },
+            { type: "radiogroup", name: "early_checkin", title: "Early Check-In Required?", choices: ["Yes", "No", "If Available"] },
+            { type: "comment", name: "hotel_notes", title: "Additional Hotel Notes" },
+          ],
+        },
+        {
+          name: "page3",
+          title: "Ground Transportation",
+          elements: [
+            { type: "radiogroup", name: "ground_transport", title: "Preferred Ground Transportation", choices: ["Rental Car", "Taxi / Rideshare", "Shuttle", "Host Provided", "No Preference"] },
+            { type: "comment", name: "transport_notes", title: "Transportation Notes" },
+            { type: "comment", name: "dietary_restrictions", title: "Dietary Restrictions / Food Allergies" },
+            { type: "comment", name: "accessibility_needs", title: "Accessibility Requirements" },
           ],
         },
       ],
@@ -356,67 +327,51 @@ const SBC_FORMS = [
           name: "page1",
           title: "Speaker Biography",
           elements: [
-            { type: "comment", name: "full_bio", title: "Full Biography", isRequired: true },
-            { type: "comment", name: "short_bio", title: "Short Bio (75 words max)", isRequired: true },
-            { type: "comment", name: "highlight_bio", title: "Highlight Bio (150 words max)" },
-            { type: "text", name: "descriptive_title", title: "Descriptive Title / Tagline", isRequired: true },
-            { type: "comment", name: "key_credentials", title: "Key Credentials / Awards / Recognitions" },
-          ],
-        },
-        {
-          name: "page2",
-          title: "Languages & Delivery",
-          elements: [
-            { type: "checkbox", name: "languages", title: "Languages Spoken", choices: ["English", "French", "Spanish", "Mandarin", "Other"] },
-            { type: "checkbox", name: "delivery_formats", title: "Delivery Formats Available", choices: ["In-Person", "Virtual", "Hybrid"] },
-            { type: "comment", name: "bio_notes", title: "Additional Notes for SBC Team" },
+            { type: "text", name: "speaker_full_name", title: "Full Name", isRequired: true },
+            { type: "comment", name: "short_bio", title: "Short Bio (100 words max)", isRequired: true },
+            { type: "comment", name: "full_bio", title: "Full Bio (400 words max)", isRequired: true },
+            { type: "comment", name: "credentials", title: "Key Credentials / Certifications" },
+            { type: "comment", name: "notable_clients", title: "Notable Clients / Organizations" },
+            { type: "text", name: "website", title: "Personal Website URL" },
+            { type: "text", name: "linkedin", title: "LinkedIn Profile URL" },
           ],
         },
       ],
     },
   },
   {
-    key: "av_tech_requirement",
+    key: "av_tech_requirements",
     label: "AV-Tech Requirement",
     group: "Speaker Portal Forms",
     schema: {
-      title: "AV & Tech Requirements",
+      title: "AV / Technical Requirements",
       pages: [
         {
           name: "page1",
-          title: "Stage & Room Setup",
+          title: "Presentation Setup",
           elements: [
-            { type: "dropdown", name: "stage_setup", title: "Preferred Stage Setup", choices: ["Theatre", "Classroom", "Boardroom", "Banquet", "U-Shape", "Other"] },
-            { type: "comment", name: "stage_notes", title: "Stage / Room Notes" },
+            { type: "radiogroup", name: "slide_deck", title: "Do you use a slide deck?", isRequired: true, choices: ["Yes", "No"] },
+            { type: "dropdown", name: "slide_software", title: "Slide Software", choices: ["PowerPoint", "Keynote", "Google Slides", "Prezi", "Other", "N/A"] },
+            { type: "radiogroup", name: "own_laptop", title: "Do you bring your own laptop?", isRequired: true, choices: ["Yes", "No"] },
+            { type: "dropdown", name: "laptop_os", title: "Laptop Operating System", choices: ["Windows", "Mac", "N/A"] },
+            { type: "checkbox", name: "connectors_needed", title: "Connectors / Adapters Needed", choices: ["HDMI", "VGA", "USB-C", "DisplayPort", "None"] },
           ],
         },
         {
           name: "page2",
-          title: "Microphone & Audio",
+          title: "Audio & Microphone",
           elements: [
-            { type: "radiogroup", name: "wireless_mic", title: "Wireless microphone required?", isRequired: true, choices: ["Yes", "No"] },
-            { type: "dropdown", name: "mic_type", title: "Preferred Microphone Type", choices: ["Lapel / Lavalier", "Handheld", "Headset", "Podium", "No Preference"] },
-            { type: "radiogroup", name: "audience_mic", title: "Audience microphone needed for Q&A?", choices: ["Yes", "No"] },
-          ],
-        },
-        {
-          name: "page3",
-          title: "Projection & Display",
-          elements: [
-            { type: "radiogroup", name: "projector_required", title: "Projector / Screen required?", choices: ["Yes", "No"] },
-            { type: "dropdown", name: "screen_size", title: "Screen Size", choices: ["Small (up to 8ft)", "Medium (8-12ft)", "Large (12ft+)", "LED Wall"] },
-            { type: "radiogroup", name: "speaker_brings_computer", title: "Speaker brings own computer?", choices: ["Yes", "No"] },
-            { type: "radiogroup", name: "hdmi_required", title: "HDMI cord required?", choices: ["Yes", "No"] },
-            { type: "radiogroup", name: "clicker_required", title: "Wireless remote clicker required?", choices: ["Yes", "No"] },
-            { type: "radiogroup", name: "wifi_required", title: "WiFi access required?", choices: ["Yes", "No"] },
-            { type: "comment", name: "av_notes", title: "Additional AV / Tech Notes" },
+            { type: "dropdown", name: "mic_preference", title: "Microphone Preference", choices: ["Lapel / Lavalier", "Handheld", "Podium", "Headset", "No Preference"] },
+            { type: "radiogroup", name: "audio_playback", title: "Do you require audio playback during your presentation?", choices: ["Yes", "No"] },
+            { type: "comment", name: "audio_notes", title: "Audio Notes" },
+            { type: "comment", name: "additional_av_notes", title: "Additional AV Notes" },
           ],
         },
       ],
     },
   },
   {
-    key: "travel_contact",
+    key: "travel_contact_info",
     label: "Travel Contact Information",
     group: "Speaker Portal Forms",
     schema: {
@@ -424,20 +379,17 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Personal Travel Contact Details",
+          title: "Personal Travel Information",
           elements: [
-            { type: "text", name: "legal_first_name", title: "Legal First Name", isRequired: true },
-            { type: "text", name: "legal_last_name", title: "Legal Last Name", isRequired: true },
-            { type: "text", name: "preferred_name", title: "Preferred Name" },
-            { type: "text", name: "email", title: "Email", inputType: "email", isRequired: true },
-            { type: "text", name: "phone", title: "Mobile Phone", isRequired: true },
+            { type: "text", name: "legal_first_name", title: "Legal First Name (as on ID)", isRequired: true },
+            { type: "text", name: "legal_last_name", title: "Legal Last Name (as on ID)", isRequired: true },
+            { type: "text", name: "date_of_birth", title: "Date of Birth", inputType: "date" },
+            { type: "dropdown", name: "id_type", title: "Primary ID Type", choices: ["Canadian Passport", "US Passport", "Other Passport", "NEXUS", "Driver's License"] },
+            { type: "text", name: "passport_number", title: "Passport Number" },
+            { type: "text", name: "passport_expiry", title: "Passport Expiry Date", inputType: "date" },
+            { type: "text", name: "nationality", title: "Nationality" },
             { type: "text", name: "emergency_contact_name", title: "Emergency Contact Name" },
             { type: "text", name: "emergency_contact_phone", title: "Emergency Contact Phone" },
-            { type: "text", name: "home_address", title: "Home Address" },
-            { type: "text", name: "home_city", title: "City" },
-            { type: "text", name: "home_province", title: "Province / State" },
-            { type: "text", name: "home_country", title: "Country" },
-            { type: "text", name: "home_postal", title: "Postal / Zip Code" },
           ],
         },
       ],
@@ -452,15 +404,17 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Add Testimonial",
+          title: "Testimonials",
           elements: [
-            { type: "text", name: "testimonial_author", title: "Author Name", isRequired: true },
-            { type: "text", name: "author_title", title: "Author Title / Position" },
-            { type: "text", name: "author_organization", title: "Author Organization" },
-            { type: "comment", name: "testimonial_text", title: "Testimonial Text", isRequired: true },
-            { type: "text", name: "event_name", title: "Event Name (if applicable)" },
-            { type: "text", name: "event_date", title: "Event Date", inputType: "date" },
-            { type: "radiogroup", name: "permission_to_publish", title: "Permission to publish on website?", choices: ["Yes", "No"], isRequired: true },
+            { type: "comment", name: "testimonial_1", title: "Testimonial 1", isRequired: true },
+            { type: "text", name: "testimonial_1_name", title: "Name of Person", isRequired: true },
+            { type: "text", name: "testimonial_1_title", title: "Title / Organization" },
+            { type: "comment", name: "testimonial_2", title: "Testimonial 2" },
+            { type: "text", name: "testimonial_2_name", title: "Name of Person" },
+            { type: "text", name: "testimonial_2_title", title: "Title / Organization" },
+            { type: "comment", name: "testimonial_3", title: "Testimonial 3" },
+            { type: "text", name: "testimonial_3_name", title: "Name of Person" },
+            { type: "text", name: "testimonial_3_title", title: "Title / Organization" },
           ],
         },
       ],
@@ -477,10 +431,12 @@ const SBC_FORMS = [
           name: "page1",
           title: "Introduction Script",
           elements: [
-            { type: "comment", name: "intro_script", title: "Introduction Script (for the emcee to read aloud)", isRequired: true },
-            { type: "text", name: "pronunciation_guide", title: "Name Pronunciation Guide" },
-            { type: "text", name: "preferred_title", title: "Preferred Title (e.g. Dr., Mr., Ms.)" },
-            { type: "comment", name: "intro_notes", title: "Notes for the Emcee" },
+            { type: "text", name: "speaker_name", title: "Speaker Name", isRequired: true },
+            { type: "text", name: "topic_title", title: "Topic / Presentation Title", isRequired: true },
+            { type: "comment", name: "intro_script_short", title: "Short Introduction (60 seconds)", isRequired: true },
+            { type: "comment", name: "intro_script_full", title: "Full Introduction (2–3 minutes)" },
+            { type: "comment", name: "pronunciation_notes", title: "Name Pronunciation Notes" },
+            { type: "comment", name: "intro_instructions", title: "Special Instructions for Emcee / Host" },
           ],
         },
       ],
@@ -566,25 +522,23 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Video Links",
+          title: "Video Content",
           elements: [
-            { type: "text", name: "demo_video_url", title: "Demo Reel / Sizzle Video URL", isRequired: true },
-            { type: "text", name: "keynote_video_url", title: "Full Keynote Video URL" },
-            { type: "text", name: "media_interview_url", title: "Media Interview URL" },
-            { type: "comment", name: "video_notes", title: "Video Notes" },
+            { type: "text", name: "demo_reel_url", title: "Demo Reel URL (YouTube / Vimeo)", isRequired: true },
+            { type: "text", name: "keynote_clip_1", title: "Keynote Clip 1 URL" },
+            { type: "text", name: "keynote_clip_2", title: "Keynote Clip 2 URL" },
+            { type: "text", name: "keynote_clip_3", title: "Keynote Clip 3 URL" },
           ],
         },
         {
           name: "page2",
-          title: "Media & Articles",
+          title: "Media & Press",
           elements: [
-            { type: "text", name: "article_1_title", title: "Article / Publication 1 — Title" },
-            { type: "text", name: "article_1_url", title: "Article 1 URL" },
-            { type: "text", name: "article_2_title", title: "Article / Publication 2 — Title" },
-            { type: "text", name: "article_2_url", title: "Article 2 URL" },
-            { type: "text", name: "article_3_title", title: "Article / Publication 3 — Title" },
-            { type: "text", name: "article_3_url", title: "Article 3 URL" },
-            { type: "comment", name: "media_notes", title: "Additional Media Notes" },
+            { type: "text", name: "press_article_1", title: "Press Article / Feature URL 1" },
+            { type: "text", name: "press_article_2", title: "Press Article / Feature URL 2" },
+            { type: "text", name: "podcast_appearance_1", title: "Podcast Appearance URL 1" },
+            { type: "text", name: "podcast_appearance_2", title: "Podcast Appearance URL 2" },
+            { type: "comment", name: "media_notes", title: "Media Notes" },
           ],
         },
       ],
@@ -602,23 +556,19 @@ const SBC_FORMS = [
           title: "Social Media Profiles",
           elements: [
             { type: "text", name: "linkedin_url", title: "LinkedIn URL" },
-            { type: "text", name: "twitter_handle", title: "Twitter / X Handle" },
-            { type: "text", name: "instagram_handle", title: "Instagram Handle" },
+            { type: "text", name: "twitter_url", title: "Twitter / X URL" },
+            { type: "text", name: "instagram_url", title: "Instagram URL" },
             { type: "text", name: "facebook_url", title: "Facebook URL" },
             { type: "text", name: "youtube_url", title: "YouTube Channel URL" },
-            { type: "text", name: "tiktok_handle", title: "TikTok Handle" },
-            { type: "text", name: "podcast_url", title: "Podcast URL" },
+            { type: "text", name: "tiktok_url", title: "TikTok URL" },
           ],
         },
         {
           name: "page2",
           title: "Value Add Offerings",
           elements: [
-            { type: "checkbox", name: "value_adds", title: "Value Add Offerings Available", choices: ["Book Signing", "Meet & Greet", "Workshop", "Breakout Session", "Masterclass", "Webinar", "Podcast Guest", "Social Media Shoutout", "Other"] },
-            { type: "comment", name: "value_add_details", title: "Describe your value add offerings" },
-            { type: "radiogroup", name: "book_available", title: "Do you have a published book?", choices: ["Yes", "No"] },
-            { type: "text", name: "book_title", title: "Book Title(s)" },
-            { type: "text", name: "book_purchase_url", title: "Book Purchase URL" },
+            { type: "checkbox", name: "value_adds", title: "Value Add Offerings Available", choices: ["Book Signing", "Workshop / Breakout Session", "Q&A Session", "Meet & Greet", "Pre-Event Webinar", "Post-Event Follow-Up", "Social Media Promotion", "Custom Video Message"] },
+            { type: "comment", name: "value_add_notes", title: "Value Add Notes" },
           ],
         },
       ],
@@ -635,28 +585,18 @@ const SBC_FORMS = [
           name: "page1",
           title: "Media Kit Assets",
           elements: [
-            { type: "text", name: "headshot_url", title: "Professional Headshot URL (high resolution)" },
+            { type: "text", name: "headshot_url", title: "Professional Headshot URL (high-res)", isRequired: true },
             { type: "text", name: "action_photo_url", title: "Action / On-Stage Photo URL" },
+            { type: "text", name: "logo_url", title: "Personal Logo / Brand URL (if applicable)" },
             { type: "text", name: "media_kit_pdf_url", title: "Media Kit PDF URL" },
-            { type: "text", name: "one_sheet_url", title: "One-Sheet PDF URL" },
-            { type: "text", name: "logo_url", title: "Personal Brand Logo URL" },
-          ],
-        },
-        {
-          name: "page2",
-          title: "Brand & Appearance",
-          elements: [
-            { type: "comment", name: "brand_colours", title: "Brand Colours (hex codes or descriptions)" },
-            { type: "text", name: "preferred_font", title: "Preferred Font (if applicable)" },
-            { type: "comment", name: "brand_guidelines", title: "Brand / Usage Guidelines for SBC" },
-            { type: "comment", name: "media_kit_notes", title: "Additional Notes" },
+            { type: "comment", name: "photo_usage_rights", title: "Photo Usage Rights / Restrictions" },
           ],
         },
       ],
     },
   },
   {
-    key: "speaker_payment",
+    key: "speaker_payment_form",
     label: "Speaker Payment Form",
     group: "Speaker Portal Forms",
     schema: {
@@ -664,34 +604,22 @@ const SBC_FORMS = [
       pages: [
         {
           name: "page1",
-          title: "Payee Information",
+          title: "Payment Details",
           elements: [
-            { type: "text", name: "legal_business_name", title: "Legal Business / Payee Name", isRequired: true },
-            { type: "text", name: "business_number", title: "Business Number / GST / HST Number" },
-            { type: "text", name: "billing_address", title: "Billing Address", isRequired: true },
-            { type: "text", name: "billing_city", title: "City", isRequired: true },
-            { type: "text", name: "billing_province", title: "Province / State" },
-            { type: "text", name: "billing_postal", title: "Postal / Zip Code" },
-            { type: "text", name: "billing_country", title: "Country" },
-          ],
-        },
-        {
-          name: "page2",
-          title: "Banking Details",
-          elements: [
-            { type: "dropdown", name: "payment_method", title: "Preferred Payment Method", isRequired: true, choices: ["EFT / Direct Deposit", "Wire Transfer", "Cheque", "PayPal", "Other"] },
-            { type: "text", name: "bank_name", title: "Bank Name" },
-            { type: "text", name: "bank_transit_number", title: "Transit Number" },
+            { type: "text", name: "legal_name", title: "Legal Name (as on bank account)", isRequired: true },
+            { type: "text", name: "business_name", title: "Business / Corporation Name (if applicable)" },
+            { type: "text", name: "gst_hst_number", title: "GST / HST Number (if registered)" },
+            { type: "dropdown", name: "payment_method", title: "Preferred Payment Method", choices: ["EFT / Direct Deposit", "Wire Transfer", "Cheque", "PayPal", "Other"] },
+            { type: "text", name: "bank_institution", title: "Bank Institution Name" },
+            { type: "text", name: "bank_transit", title: "Transit Number" },
             { type: "text", name: "bank_institution_number", title: "Institution Number" },
             { type: "text", name: "bank_account_number", title: "Account Number" },
             { type: "text", name: "paypal_email", title: "PayPal Email (if applicable)" },
-            { type: "comment", name: "payment_notes", title: "Payment Notes" },
           ],
         },
       ],
     },
   },
-
   // ── WEBSITE FORMS ──
   {
     key: "event_media",
@@ -707,13 +635,10 @@ const SBC_FORMS = [
             { type: "text", name: "event_name", title: "Event Name", isRequired: true },
             { type: "text", name: "event_date", title: "Event Date", inputType: "date", isRequired: true },
             { type: "text", name: "speaker_name", title: "Speaker Name", isRequired: true },
-            { type: "text", name: "organization_name", title: "Organization / Host Name" },
-            { type: "text", name: "photographer_name", title: "Photographer / Videographer Name" },
-            { type: "text", name: "media_link", title: "Link to Media (Google Drive, Dropbox, etc.)" },
-            { type: "comment", name: "media_description", title: "Describe the media being submitted" },
-            { type: "radiogroup", name: "permission_to_publish", title: "Permission to publish on SBC website and social media?", isRequired: true, choices: ["Yes - Full Permission", "Yes - Website Only", "No"] },
-            { type: "text", name: "submitter_name", title: "Your Name", isRequired: true },
-            { type: "text", name: "submitter_email", title: "Your Email", inputType: "email", isRequired: true },
+            { type: "text", name: "photo_url_1", title: "Event Photo URL 1" },
+            { type: "text", name: "photo_url_2", title: "Event Photo URL 2" },
+            { type: "text", name: "video_url", title: "Event Video URL" },
+            { type: "comment", name: "media_notes", title: "Media Notes" },
           ],
         },
       ],
@@ -748,9 +673,37 @@ const SBC_FORMS = [
   },
 ];
 
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const STORAGE_KEY = "sbc_form_schemas_v3";
 const PASSWORD_KEY = "sbc_builder_auth";
+const GROUPS = ["Client / Event Forms", "Speaker Portal Forms", "Website Forms"];
 
+const FONT_OPTIONS = [
+  { label: "Georgia Pro (Headings)", value: "'Georgia Pro', Georgia, serif" },
+  { label: "IBM Plex Sans (Body / UI)", value: "'IBM Plex Sans', Arial, sans-serif" },
+  { label: "Verdana (Documents)", value: "Verdana, Geneva, sans-serif" },
+  { label: "Georgia (Fallback)", value: "Georgia, serif" },
+  { label: "Arial", value: "Arial, sans-serif" },
+];
+
+const SIZE_OPTIONS = ["10px","11px","12px","13px","14px","16px","18px","20px","22px","24px","27px","32px","36px","38px"];
+
+const COLOR_OPTIONS = [
+  { label: "SBC Dark (default)", value: "#0B0C0C" },
+  { label: "SBC Red", value: "#D00000" },
+  { label: "SBC Deep Red", value: "#9E1B32" },
+  { label: "SBC Dark Grey", value: "#3D4543" },
+  { label: "SBC Grey", value: "#7B868C" },
+  { label: "SBC Light", value: "#F7F7F7" },
+  { label: "White", value: "#FFFFFF" },
+  { label: "Black", value: "#000000" },
+  { label: "Blue", value: "#1565c0" },
+  { label: "Green", value: "#2e7d32" },
+  { label: "Orange", value: "#e65100" },
+  { label: "Purple", value: "#6a1b9a" },
+];
+
+// ─── STORAGE HELPERS ──────────────────────────────────────────────────────────
 function loadForms() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -768,6 +721,19 @@ function saveForms(forms) {
 
 function isAuthenticated() {
   return sessionStorage.getItem(PASSWORD_KEY) === "1";
+}
+
+// ─── SURVEY CREATOR WRAPPER ─────────────────────────────────────────────────
+// Resolves the SurveyCreatorComponent lazily to handle Vite CJS interop
+function SurveyCreatorComponentWrapper({ creator }) {
+  const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    getSurveyCreatorLibAsync().then((lib) => {
+      if (lib && lib.SurveyCreatorComponent) setComp(() => lib.SurveyCreatorComponent);
+    });
+  }, []);
+  if (!Comp) return null;
+  return <Comp creator={creator} style={{ height: "100%" }} />;
 }
 
 // ─── PASSWORD SCREEN ─────────────────────────────────────────────────────────
@@ -819,49 +785,101 @@ function PasswordScreen({ onSuccess }) {
   );
 }
 
-// ─── GROUPS ──────────────────────────────────────────────────────────────────
-const GROUPS = ["Client / Event Forms", "Speaker Portal Forms", "Website Forms"];
+// ─── STYLE BAR ───────────────────────────────────────────────────────────────
+// Applies style to the SELECTED field only (not the whole form).
+// When no field is selected, the controls are greyed out with a hint.
+function StyleBar({ selectedQuestion, onApplyStyle }) {
+  const [font, setFont] = useState("'IBM Plex Sans', Arial, sans-serif");
+  const [size, setSize] = useState("14px");
+  const [color, setColor] = useState("#0B0C0C");
+  const [bold, setBold] = useState(false);
+  const [italic, setItalic] = useState(false);
+  const [underline, setUnderline] = useState(false);
 
-// ─── RICH TEXT EDITOR PANEL ──────────────────────────────────────────────────
-// This is a standalone rich-text editor panel that works like Word.
-// Gordon types here, highlights text, applies bold/italic/underline/color/font/size.
-// The result is saved as HTML in the form's notes/richText field.
+  const hasSelection = !!selectedQuestion;
 
-const QUILL_MODULES = {
-  toolbar: [
-    [{ font: ["", "Georgia Pro", "IBM Plex Sans", "Verdana", "Arial"] }],
-    [{ size: ["small", false, "large", "huge"] }],
-    ["bold", "italic", "underline", "strike"],
-    [{ color: ["#0B0C0C", "#D00000", "#9E1B32", "#3D4543", "#7B868C", "#1565c0", "#2e7d32", "#000000", "#ffffff"] }, { background: [] }],
-    [{ align: [] }],
-    ["clean"],
-  ],
-};
+  const apply = useCallback(() => {
+    if (!hasSelection) return;
+    onApplyStyle({ font, size, color, bold, italic, underline });
+  }, [hasSelection, font, size, color, bold, italic, underline, onApplyStyle]);
 
-const QUILL_FORMATS = ["font", "size", "bold", "italic", "underline", "strike", "color", "background", "align"];
+  const s = {
+    panel: {
+      background: "#fff",
+      borderBottom: "1px solid #e0e0e0",
+      padding: "0.5rem 1.25rem",
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "0.6rem",
+      alignItems: "center",
+      opacity: hasSelection ? 1 : 0.5,
+    },
+    label: { fontSize: "0.72rem", color: "#546e7a", fontWeight: 600 },
+    select: { fontSize: "0.78rem", padding: "0.25rem 0.4rem", border: "1px solid #ccc", borderRadius: 4, background: "#fafafa", cursor: hasSelection ? "pointer" : "not-allowed" },
+    divider: { width: 1, height: 24, background: "#e0e0e0", margin: "0 0.2rem" },
+    toggleBtn: (active) => ({
+      padding: "0.25rem 0.55rem",
+      background: active ? "#0B0C0C" : "#f5f5f5",
+      color: active ? "#fff" : "#333",
+      border: "1px solid #ccc",
+      borderRadius: 4,
+      cursor: hasSelection ? "pointer" : "not-allowed",
+      fontSize: "0.82rem",
+      fontWeight: 700,
+      minWidth: 30,
+    }),
+    applyBtn: {
+      padding: "0.3rem 0.9rem",
+      background: hasSelection ? "#D00000" : "#ccc",
+      color: "#fff",
+      border: "none",
+      borderRadius: 4,
+      cursor: hasSelection ? "pointer" : "not-allowed",
+      fontSize: "0.78rem",
+      fontWeight: 700,
+    },
+  };
 
-function RichTextPanel({ value, onChange, label }) {
   return (
-    <div style={{ padding: "1rem 1.25rem", background: "#fff", borderBottom: "2px solid #e0e0e0" }}>
-      <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#546e7a", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label || "Rich Text Notes / Formatted Content"}
-        <span style={{ fontWeight: 400, color: "#9e9e9e", marginLeft: "0.5rem", textTransform: "none", letterSpacing: 0 }}>
-          — Highlight text then click Bold, Color, Font etc. Works like Word.
-        </span>
-      </div>
-      <div style={{ border: "1.5px solid #e0e0e0", borderRadius: 4, background: "#fff", minHeight: 120 }}>
-        <ReactQuill
-          theme="snow"
-          value={value}
-          onChange={onChange}
-          modules={QUILL_MODULES}
-          formats={QUILL_FORMATS}
-          style={{ fontFamily: "'IBM Plex Sans', Arial, sans-serif" }}
-        />
-      </div>
-      <div style={{ fontSize: "0.68rem", color: "#9e9e9e", marginTop: "0.35rem" }}>
-        This rich text block is saved with the form when you click Save. Export the form to send to your developer.
-      </div>
+    <div style={s.panel}>
+      <span style={s.label}>
+        {hasSelection
+          ? <span>Style: <strong style={{ color: "#D00000" }}>{selectedQuestion}</strong></span>
+          : <span style={{ color: "#9e9e9e" }}>Click a field in the form to select it, then apply style</span>
+        }
+      </span>
+      <div style={s.divider} />
+      <span style={s.label}>Font:</span>
+      <select style={s.select} value={font} disabled={!hasSelection} onChange={(e) => setFont(e.target.value)}>
+        {FONT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <span style={s.label}>Size:</span>
+      <select style={s.select} value={size} disabled={!hasSelection} onChange={(e) => setSize(e.target.value)}>
+        {SIZE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <div style={s.divider} />
+      <span style={s.label}>Style:</span>
+      <button style={s.toggleBtn(bold)} disabled={!hasSelection} onClick={() => setBold(!bold)} title="Bold"><strong>B</strong></button>
+      <button style={s.toggleBtn(italic)} disabled={!hasSelection} onClick={() => setItalic(!italic)} title="Italic"><em>I</em></button>
+      <button style={s.toggleBtn(underline)} disabled={!hasSelection} onClick={() => setUnderline(!underline)} title="Underline"><u>U</u></button>
+      <div style={s.divider} />
+      <span style={s.label}>Color:</span>
+      <span style={{ width: 16, height: 16, borderRadius: "50%", border: "1px solid #ccc", display: "inline-block", background: color, verticalAlign: "middle" }} />
+      <select style={s.select} value={color} disabled={!hasSelection} onChange={(e) => setColor(e.target.value)}>
+        {COLOR_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <input
+        type="color"
+        value={color}
+        disabled={!hasSelection}
+        onChange={(e) => setColor(e.target.value)}
+        title="Pick custom color"
+        style={{ width: 28, height: 28, padding: 0, border: "1px solid #ccc", borderRadius: 4, cursor: hasSelection ? "pointer" : "not-allowed", background: "none" }}
+      />
+      <div style={s.divider} />
+      <button style={s.applyBtn} disabled={!hasSelection} onClick={apply}>
+        Apply to Field
+      </button>
     </div>
   );
 }
@@ -873,142 +891,195 @@ export default function App() {
   const [selectedKey, setSelectedKey] = useState(null);
   const [creator, setCreator] = useState(null);
   const [saveStatus, setSaveStatus] = useState("");
-  const [richText, setRichText] = useState("");
+  // Track which question is currently selected in the designer
+  const [selectedQuestion, setSelectedQuestion] = useState(null);
+  // Store per-field styles: { questionName: { font, size, color, bold, italic, underline } }
+  const [fieldStyles, setFieldStyles] = useState({});
   const creatorRef = useRef(null);
+  const styleTagRef = useRef(null);
+  const surveyLibRef = useRef(null);
 
-  const openForm = (key) => {
+  // Preload survey-creator-react on mount so openForm can use it synchronously
+  useEffect(() => {
+    getSurveyCreatorLibAsync().then((lib) => {
+      surveyLibRef.current = lib;
+    });
+  }, []);
+
+  // Inject per-field CSS whenever fieldStyles changes
+  useEffect(() => {
+    if (!styleTagRef.current) {
+      const tag = document.createElement("style");
+      tag.id = "sbc-field-styles";
+      document.head.appendChild(tag);
+      styleTagRef.current = tag;
+    }
+    // Build CSS rules for each styled field
+    const rules = Object.entries(fieldStyles).map(([name, st]) => {
+      const fontFamily = st.font ? `font-family: ${st.font} !important;` : "";
+      const fontSize = st.size ? `font-size: ${st.size} !important;` : "";
+      const color = st.color ? `color: ${st.color} !important;` : "";
+      const fontWeight = st.bold ? "font-weight: bold !important;" : "";
+      const fontStyle = st.italic ? "font-style: italic !important;" : "";
+      const textDecoration = st.underline ? "text-decoration: underline !important;" : "";
+      return `
+        [data-name="${name}"] .sd-question__title,
+        [data-name="${name}"] .sv-string-viewer,
+        [data-name="${name}"] .sd-title {
+          ${fontFamily} ${fontSize} ${color} ${fontWeight} ${fontStyle} ${textDecoration}
+        }
+      `;
+    }).join("\n");
+    styleTagRef.current.textContent = rules;
+  }, [fieldStyles]);
+
+  const openFormRef = useRef(null);
+  openFormRef.current = (key) => {
     const form = forms[key];
     if (!form) return;
 
-    const c = new SurveyCreator({
+    const lib = surveyLibRef.current;
+    console.log('[SBC] openForm called, key:', key, 'lib:', lib ? typeof lib.SurveyCreator : 'null');
+    if (!lib || !lib.SurveyCreator) {
+      // Library not yet loaded - wait for it
+      getSurveyCreatorLibAsync().then((loadedLib) => {
+        surveyLibRef.current = loadedLib;
+        openForm(key);
+      });
+      return;
+    }
+    console.log('[SBC] Creating SurveyCreator...');
+    const c = new lib.SurveyCreator({
       showLogicTab: true,
       showTranslationTab: false,
       isAutoSave: false,
     });
 
-    // Add "Text Box" items to the toolbox so Gordon can drag them in
-    c.onSurveyInstanceCreated.add(() => {
-      try {
-        // Short text box
-        c.toolbox.addItem({
-          name: "sbc_textbox_short",
-          title: "Text Box (Short)",
-          iconName: "icon-text",
-          category: "general",
-          json: {
-            type: "text",
-            name: "text_box_short",
-            title: "Enter your answer",
-            maxLength: 150,
-          },
-        }, 0);
-        // Long text box
-        c.toolbox.addItem({
-          name: "sbc_textbox_long",
-          title: "Text Box (Long)",
-          iconName: "icon-comment",
-          category: "general",
-          json: {
-            type: "comment",
-            name: "text_box_long",
-            title: "Enter your answer",
-            rows: 4,
-          },
-        }, 1);
-      } catch (e) {
-        // toolbox may not be ready yet, that's ok
+    console.log('[SBC] Creator created, onSelectedElementChanged:', typeof c.onSelectedElementChanged);
+    c.JSON = form.schema;
+
+    // Restore saved per-field styles
+    setFieldStyles(form.fieldStyles || {});
+    setSelectedQuestion(null);
+
+    // Track which field is selected in the designer
+    c.onSelectedElementChanged.add((sender, options) => {
+      const el = options.newSelectedElement;
+      if (el && el.name && el.getType && el.getType() !== "survey" && el.getType() !== "page") {
+        setSelectedQuestion(el.name);
+      } else {
+        setSelectedQuestion(null);
       }
     });
 
-    c.JSON = form.schema;
-
-    // Restore saved rich text
-    setRichText(form.richText || "");
+    // Add text box items to toolbox directly
+    try { c.toolbox.removeItem("sbc_textbox_short"); } catch (e) {}
+    try { c.toolbox.removeItem("sbc_textbox_long"); } catch (e) {}
+    try {
+      c.toolbox.addItem({
+        name: "sbc_textbox_short",
+        title: "Text Box (Short)",
+        iconName: "icon-text",
+        category: "general",
+        json: { type: "text", name: "text_box_short", title: "Enter your text here", maxLength: 150 },
+      }, 0);
+      c.toolbox.addItem({
+        name: "sbc_textbox_long",
+        title: "Text Box (Long)",
+        iconName: "icon-comment",
+        category: "general",
+        json: { type: "comment", name: "text_box_long", title: "Enter your text here", rows: 4 },
+      }, 1);
+    } catch (e) { console.log('[SBC] toolbox.addItem error:', e.message); }
 
     creatorRef.current = c;
     setCreator(c);
     setSelectedKey(key);
     setSaveStatus("");
   };
+  const openForm = (key) => openFormRef.current(key);
 
-  // Add toolbox items after creator is mounted (fallback)
+  // Add toolbox items after mount as fallback
   useEffect(() => {
     if (!creator) return;
-    try {
-      // Remove existing custom items first to avoid duplicates
-      try { creator.toolbox.removeItem("sbc_textbox_short"); } catch (e) {}
-      try { creator.toolbox.removeItem("sbc_textbox_long"); } catch (e) {}
-
-      creator.toolbox.addItem({
-        name: "sbc_textbox_short",
-        title: "Text Box (Short)",
-        iconName: "icon-text",
-        category: "general",
-        json: {
-          type: "text",
-          name: "text_box_short",
-          title: "Enter your answer",
-          maxLength: 150,
-        },
-      }, 0);
-
-      creator.toolbox.addItem({
-        name: "sbc_textbox_long",
-        title: "Text Box (Long)",
-        iconName: "icon-comment",
-        category: "general",
-        json: {
-          type: "comment",
-          name: "text_box_long",
-          title: "Enter your answer",
-          rows: 4,
-        },
-      }, 1);
-    } catch (e) {
-      console.warn("Toolbox item add failed:", e);
-    }
+    const timer = setTimeout(() => {
+      try {
+        try { creator.toolbox.removeItem("sbc_textbox_short"); } catch (e) {}
+        try { creator.toolbox.removeItem("sbc_textbox_long"); } catch (e) {}
+        creator.toolbox.addItem({
+          name: "sbc_textbox_short",
+          title: "Text Box (Short)",
+          iconName: "icon-text",
+          category: "general",
+          json: { type: "text", name: "text_box_short", title: "Enter your text here", maxLength: 150 },
+        }, 0);
+        creator.toolbox.addItem({
+          name: "sbc_textbox_long",
+          title: "Text Box (Long)",
+          iconName: "icon-comment",
+          category: "general",
+          json: { type: "comment", name: "text_box_long", title: "Enter your text here", rows: 4 },
+        }, 1);
+      } catch (e) {}
+    }, 500);
+    return () => clearTimeout(timer);
   }, [creator]);
 
-  const handleSave = () => {
+  const handleApplyStyle = useCallback((style) => {
+    if (!selectedQuestion) return;
+    setFieldStyles((prev) => ({ ...prev, [selectedQuestion]: style }));
+  }, [selectedQuestion]);
+
+  const handleAddField = useCallback((size) => {
+    if (!creatorRef.current) return;
+    const name = `text_field_${Date.now()}`;
+    const q = creatorRef.current.survey.currentPage?.addNewQuestion("text", name);
+    if (q) {
+      q.title = size === "small" ? "Short Text Field" : "Medium Text Field";
+      if (size === "medium") q.maxLength = 500;
+      else q.maxLength = 100;
+    }
+    setSaveStatus("Field added — click Save");
+    setTimeout(() => setSaveStatus(""), 3000);
+  }, []);
+
+  const handleSave = useCallback(() => {
     if (!creatorRef.current || !selectedKey) return;
     const updated = {
       ...forms,
       [selectedKey]: {
         ...forms[selectedKey],
         schema: creatorRef.current.JSON,
-        richText: richText,
+        fieldStyles: fieldStyles,
       },
     };
     setForms(updated);
     saveForms(updated);
     setSaveStatus("Saved ✓");
     setTimeout(() => setSaveStatus(""), 3000);
-  };
+  }, [forms, selectedKey, fieldStyles]);
 
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
     if (!creatorRef.current || !selectedKey) return;
-    const payload = {
-      schema: creatorRef.current.JSON,
-      richText: richText,
-    };
+    const payload = { schema: creatorRef.current.JSON, fieldStyles };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${selectedKey}.json`;
     a.click();
-  };
+  }, [selectedKey, fieldStyles]);
 
-  const handleExportAll = () => {
+  const handleExportAll = useCallback(() => {
     const all = {};
     Object.entries(forms).forEach(([key, f]) => {
-      all[key] = { schema: f.schema, richText: f.richText || "" };
+      all[key] = { schema: f.schema, fieldStyles: f.fieldStyles || {} };
     });
     const blob = new Blob([JSON.stringify(all, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "sbc_all_forms.json";
     a.click();
-  };
+  }, [forms]);
 
   const selectedForm = selectedKey ? forms[selectedKey] : null;
 
@@ -1022,7 +1093,7 @@ export default function App() {
         <div style={{ padding: "1.25rem 1rem", borderBottom: "1px solid #3D4543", textAlign: "center" }}>
           <img src="./sbc_logo.png" alt="SBC" style={{ width: 130, marginBottom: "0.6rem", filter: "brightness(0) invert(1)" }} />
           <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#fff", fontFamily: "Georgia, serif" }}>Form Builder</div>
-          <div style={{ fontSize: "0.68rem", color: "#7B868C", marginTop: "0.2rem" }}>Click a form to open it</div>
+          <div style={{ fontSize: "0.68rem", color: "#7B868C", marginTop: "0.2rem" }}>Click a form to edit it</div>
         </div>
 
         <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid #3D4543" }}>
@@ -1031,16 +1102,22 @@ export default function App() {
           </button>
         </div>
 
-        {/* Tip box */}
-        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid #3D4543", background: "#1a1a1a" }}>
-          <div style={{ fontSize: "0.65rem", color: "#ef9a9a", fontWeight: 700, marginBottom: "0.3rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>How to style text like Word</div>
-          <div style={{ fontSize: "0.68rem", color: "#90a4ae", lineHeight: 1.5 }}>
-            1. Open a form<br />
-            2. Use the <strong style={{ color: "#fff" }}>Rich Text Editor</strong> below the form<br />
-            3. Type your text, highlight words, pick Bold / Color / Font<br />
-            4. Drag <strong style={{ color: "#fff" }}>Text Box (Short/Long)</strong> from the toolbox into the form<br />
-            5. Click <strong style={{ color: "#D00000" }}>Save</strong> when done
+        {/* Add Text Field buttons */}
+        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid #3D4543" }}>
+          <div style={{ fontSize: "0.65rem", color: "#ef9a9a", textTransform: "uppercase", fontWeight: 700, marginBottom: "0.4rem", letterSpacing: "0.08em" }}>Add Text Field</div>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              onClick={() => handleAddField("small")}
+              disabled={!creator}
+              style={{ flex: 1, padding: "0.4rem 0.3rem", background: creator ? "#9E1B32" : "#3D4543", color: "#fff", border: "none", borderRadius: 4, cursor: creator ? "pointer" : "not-allowed", fontSize: "0.75rem", fontWeight: 600 }}
+            >＋ Small</button>
+            <button
+              onClick={() => handleAddField("medium")}
+              disabled={!creator}
+              style={{ flex: 1, padding: "0.4rem 0.3rem", background: creator ? "#9E1B32" : "#3D4543", color: "#fff", border: "none", borderRadius: 4, cursor: creator ? "pointer" : "not-allowed", fontSize: "0.75rem", fontWeight: 600 }}
+            >＋ Medium</button>
           </div>
+          <div style={{ fontSize: "0.65rem", color: "#546e7a", marginTop: "0.35rem" }}>Open a form first, then click to add</div>
         </div>
 
         {GROUPS.map((group) => (
@@ -1083,12 +1160,11 @@ export default function App() {
           )}
         </div>
 
-        {/* Rich text editor — shown when a form is open */}
+        {/* Style bar — shown when a form is open */}
         {creator && (
-          <RichTextPanel
-            value={richText}
-            onChange={setRichText}
-            label={`Rich Text Block — ${selectedForm?.label || "Form"}`}
+          <StyleBar
+            selectedQuestion={selectedQuestion}
+            onApplyStyle={handleApplyStyle}
           />
         )}
 
@@ -1100,20 +1176,18 @@ export default function App() {
               height: "100%",
               background: "#ffffff",
               backgroundImage: "url('./backgrounds/leaf_full-1.png')",
-              backgroundSize: "60%", backgroundPosition: "center", backgroundRepeat: "no-repeat",
+              backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat",
             }}>
-              <div style={{ background: "#fff", borderRadius: 8, padding: "2rem 2.5rem", textAlign: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", maxWidth: 480 }}>
+              <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "2rem 2.5rem", textAlign: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
                 <img src="./sbc_logo.png" alt="SBC" style={{ width: 160, marginBottom: "1rem" }} />
                 <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#0B0C0C", fontFamily: "Georgia, serif" }}>Select a form from the sidebar</div>
-                <div style={{ fontSize: "0.85rem", color: "#7B868C", marginTop: "0.5rem" }}>
-                  Drag and drop fields to edit. Use the <strong>Rich Text Editor</strong> to style text like Word — highlight words and pick bold, color, font. Drag <strong>Text Box (Short/Long)</strong> from the toolbox. Click <strong>Save</strong> when done.
+                <div style={{ fontSize: "0.85rem", color: "#7B868C", marginTop: "0.5rem", maxWidth: 400 }}>
+                  Drag and drop fields to edit. Use the <strong>Style Bar</strong> to set font, size, and color per field. Drag <strong>Text Box (Short/Long)</strong> from the toolbox. Click <strong>Save</strong> when done.
                 </div>
               </div>
             </div>
           )}
-          {creator && (
-            <SurveyCreatorComponent creator={creator} style={{ height: "100%" }} />
-          )}
+          {creator && <SurveyCreatorComponentWrapper creator={creator} />}
         </div>
       </div>
     </div>
