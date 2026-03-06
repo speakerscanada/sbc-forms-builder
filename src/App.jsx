@@ -27,6 +27,7 @@ async function getSurveyCreatorLibAsync() {
 }
 import "survey-creator-core/survey-creator-core.min.css";
 import "survey-core/defaultV2.min.css";
+import "quill/dist/quill.snow.css";
 
 const CORRECT_PASSWORD = "780WestCalgaryMa!!";
 
@@ -785,6 +786,61 @@ function PasswordScreen({ onSuccess }) {
   );
 }
 
+// ─── RICH TEXT PANEL ─────────────────────────────────────────────────────────
+// A standalone Quill editor panel — type text, highlight to format, like Word.
+function RichTextPanel({ visible }) {
+  const containerRef = useRef(null);
+  const quillRef = useRef(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!visible || collapsed || quillRef.current) return;
+    import('quill').then((mod) => {
+      const Quill = mod.default || mod;
+      if (!containerRef.current || quillRef.current) return;
+      quillRef.current = new Quill(containerRef.current, {
+        theme: 'snow',
+        placeholder: 'Type your text here. Highlight any word to change its font, size, color, or style — just like Word.',
+        modules: {
+          toolbar: [
+            [{ font: [] }, { size: ['10px','11px','12px','13px','14px','16px','18px','20px','24px','28px','32px','36px'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ color: [] }, { background: [] }],
+            [{ align: [] }],
+            ['clean'],
+          ],
+        },
+      });
+    });
+  }, [visible, collapsed]);
+
+  if (!visible) return null;
+
+  return (
+    <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', flexShrink: 0 }}>
+      <div
+        onClick={() => setCollapsed(!collapsed)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0.4rem 1.25rem', cursor: 'pointer',
+          background: '#fafafa', borderBottom: collapsed ? 'none' : '1px solid #f0f0f0',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#546e7a', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          ✏️ Rich Text Block — type here, highlight text to format it
+        </span>
+        <span style={{ fontSize: '0.75rem', color: '#9e9e9e' }}>{collapsed ? '▼ Show' : '▲ Hide'}</span>
+      </div>
+      {!collapsed && (
+        <div style={{ padding: '0 0 0.5rem 0' }}>
+          <div ref={containerRef} style={{ minHeight: 80, maxHeight: 200, overflowY: 'auto', fontSize: '0.9rem' }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── STYLE BAR ───────────────────────────────────────────────────────────────
 // Applies style to the SELECTED field only (not the whole form).
 // When no field is selected, the controls are greyed out with a hint.
@@ -973,6 +1029,15 @@ export default function App() {
     });
 
     // Add text box items to toolbox directly
+    // These use SurveyJS 'html' type so the content is a real editable rich text area
+    const quillEditorHtml = (height) => `<div style="border:1px solid #ccc;border-radius:4px;overflow:hidden;">
+  <div id="sbc-rte-${Date.now()}" style="min-height:${height}px;padding:8px;font-family:IBM Plex Sans,Arial,sans-serif;font-size:14px;outline:none;" contenteditable="true" data-placeholder="Type your text here. Select text to format it."
+    onFocus="this.style.borderColor='#D00000'"
+    onBlur="this.style.borderColor=''"
+    style="min-height:${height}px;padding:8px;font-family:IBM Plex Sans,Arial,sans-serif;font-size:14px;outline:none;border:none;"
+  ></div>
+  <div style="padding:4px 8px;background:#f5f5f5;border-top:1px solid #e0e0e0;font-size:11px;color:#888;">Select text above to format it — use browser text formatting (Ctrl+B, Ctrl+I) or right-click</div>
+</div>`;
     try { c.toolbox.removeItem("sbc_textbox_short"); } catch (e) {}
     try { c.toolbox.removeItem("sbc_textbox_long"); } catch (e) {}
     try {
@@ -981,14 +1046,14 @@ export default function App() {
         title: "Text Box (Short)",
         iconName: "icon-text",
         category: "general",
-        json: { type: "text", name: "text_box_short", title: "Enter your text here", maxLength: 150 },
+        json: { type: "text", name: `text_box_${Date.now()}`, title: "Text Box", titleLocation: "hidden", placeholder: "Type your text here..." },
       }, 0);
       c.toolbox.addItem({
         name: "sbc_textbox_long",
         title: "Text Box (Long)",
         iconName: "icon-comment",
         category: "general",
-        json: { type: "comment", name: "text_box_long", title: "Enter your text here", rows: 4 },
+        json: { type: "comment", name: `text_box_long_${Date.now()}`, title: "Text Box (Long)", titleLocation: "hidden", placeholder: "Type your text here...", rows: 5 },
       }, 1);
     } catch (e) { console.log('[SBC] toolbox.addItem error:', e.message); }
 
@@ -1011,14 +1076,14 @@ export default function App() {
           title: "Text Box (Short)",
           iconName: "icon-text",
           category: "general",
-          json: { type: "text", name: "text_box_short", title: "Enter your text here", maxLength: 150 },
+          json: { type: "text", name: `text_box_${Date.now()}`, title: "Text Box", titleLocation: "hidden", placeholder: "Type your text here..." },
         }, 0);
         creator.toolbox.addItem({
           name: "sbc_textbox_long",
           title: "Text Box (Long)",
           iconName: "icon-comment",
           category: "general",
-          json: { type: "comment", name: "text_box_long", title: "Enter your text here", rows: 4 },
+          json: { type: "comment", name: `text_box_long_${Date.now()}`, title: "Text Box (Long)", titleLocation: "hidden", placeholder: "Type your text here...", rows: 5 },
         }, 1);
       } catch (e) {}
     }, 500);
@@ -1167,6 +1232,9 @@ export default function App() {
             onApplyStyle={handleApplyStyle}
           />
         )}
+
+        {/* Rich Text Block — type and format text like Word */}
+        <RichTextPanel visible={!!creator} />
 
         {/* Editor area */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
